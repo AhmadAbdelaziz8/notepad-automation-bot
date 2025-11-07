@@ -6,6 +6,7 @@ import mss
 import time
 import pygetwindow as gw
 from pathlib import Path
+import pyperclip
 
 # --- Constants ---
 API_URL = "https://jsonplaceholder.typicode.com/posts"
@@ -110,26 +111,47 @@ def setup_environment():
     PROJECT_PATH.mkdir(parents=True, exist_ok=True)
 
 # --- 4. Main Automation Workflow ---
+def get_notepad_windows():
+    """Gets only actual Notepad windows, filtering out other applications."""
+    all_windows = gw.getWindowsWithTitle("Notepad")
+    notepad_windows = []
+    
+    for window in all_windows:
+        title = window.title.lower()
+        # Only include windows that are clearly Notepad windows
+        # Notepad titles are typically: "Notepad", "Untitled - Notepad", or "filename.txt - Notepad"
+        if title == "notepad" or title.endswith(" - notepad") or "notepad" in title:
+            # Additional check: exclude windows that might be other apps
+            # Cursor or other editors might have "notepad" in their title but not be Notepad
+            if "cursor" not in title and "code" not in title and "editor" not in title:
+                notepad_windows.append(window)
+    
+    return notepad_windows
+
 def close_existing_notepad():
     """Closes any existing Notepad windows without saving."""
-    active_windows = gw.getWindowsWithTitle("Notepad")
+    active_windows = get_notepad_windows()
     if not active_windows:
         return
     
     print(f"Found {len(active_windows)} existing Notepad window(s). Closing...")
     for window in active_windows:
         if window.visible:
+            # Verify it's actually Notepad before closing
+            title = window.title.lower()
+            if "cursor" in title or "code" in title:
+                print(f"Skipping non-Notepad window: {window.title}")
+                continue
+                
             window.close()
             time.sleep(0.5)  # Wait for close dialog if it appears
             
             # Handle "Save changes?" dialog if it appears
             # Windows Notepad may show a dialog asking to save changes
             # Press 'n' to discard changes (don't save)
-            # We check for dialog by looking for common dialog patterns
-            # or just send 'n' after a brief delay to handle it if present
             try:
                 # Check for dialog windows (common titles include "Notepad" with dialog)
-                dialog_windows = gw.getWindowsWithTitle("Notepad")
+                dialog_windows = get_notepad_windows()
                 # If there's still a Notepad window visible, it might be a dialog
                 # Send 'n' to discard changes
                 pyautogui.press('n')
@@ -141,17 +163,91 @@ def close_existing_notepad():
     time.sleep(0.5)
     
     # Final check - if any Notepad windows remain, try Alt+F4 as fallback
-    remaining_windows = gw.getWindowsWithTitle("Notepad")
+    remaining_windows = get_notepad_windows()
     if remaining_windows:
         for window in remaining_windows:
             if window.visible:
+                title = window.title.lower()
+                if "cursor" in title or "code" in title:
+                    continue  # Skip non-Notepad windows
+                    
                 window.activate()
+                time.sleep(0.2)
                 pyautogui.hotkey('alt', 'f4')
                 time.sleep(0.3)
                 pyautogui.press('n')  # Discard changes if dialog appears
                 time.sleep(0.3)
     
     print("Existing Notepad windows closed.")
+
+def close_notepad_fully():
+    """Closes Notepad window and verifies it is fully closed."""
+    print("Closing Notepad...")
+    active_windows = get_notepad_windows()
+    
+    if not active_windows:
+        print("No Notepad windows found to close.")
+        return True
+    
+    # Close all Notepad windows
+    for window in active_windows:
+        if window.visible:
+            try:
+                # Verify it's actually Notepad before closing
+                title = window.title.lower()
+                if "cursor" in title or "code" in title:
+                    print(f"Skipping non-Notepad window: {window.title}")
+                    continue
+                    
+                window.close()
+                time.sleep(0.5)
+            except:
+                # Fallback to Alt+F4 if close() fails, but only if it's actually Notepad
+                title = window.title.lower()
+                if "cursor" not in title and "code" not in title:
+                    window.activate()
+                    time.sleep(0.2)  # Brief pause before sending Alt+F4
+                    pyautogui.hotkey('alt', 'f4')
+                    time.sleep(0.5)
+    
+    # Verify closure with timeout
+    timeout = time.time() + 5  # 5 second timeout
+    while time.time() < timeout:
+        remaining_windows = get_notepad_windows()
+        if not remaining_windows or not any(win.visible for win in remaining_windows):
+            print("Notepad successfully closed and verified.")
+            time.sleep(0.5)  # Additional wait to ensure cleanup
+            return True
+        time.sleep(0.2)
+    
+    # If still open, try more aggressive closing (but only for actual Notepad)
+    remaining_windows = get_notepad_windows()
+    if remaining_windows:
+        print("Warning: Notepad still open, trying aggressive close...")
+        for window in remaining_windows:
+            if window.visible:
+                title = window.title.lower()
+                if "cursor" in title or "code" in title:
+                    continue  # Skip non-Notepad windows
+                    
+                window.activate()
+                time.sleep(0.2)
+                pyautogui.hotkey('alt', 'f4')
+                time.sleep(0.3)
+                # Handle any save dialog
+                pyautogui.press('n')  # Don't save
+                time.sleep(0.5)
+        
+        # Final verification
+        final_check = get_notepad_windows()
+        if not final_check or not any(win.visible for win in final_check):
+            print("Notepad closed after aggressive attempt.")
+            return True
+        else:
+            print("Error: Failed to close Notepad completely.")
+            return False
+    
+    return True
 
 def launch_and_validate_notepad(templates_list):
     """Finds, clicks, and validates Notepad launch."""
@@ -174,7 +270,7 @@ def launch_and_validate_notepad(templates_list):
     timeout = time.time() + 5 # 5 second timeout
     while time.time() < timeout:
         # Check for "Untitled - Notepad" or just "Notepad"
-        active_windows = gw.getWindowsWithTitle("Notepad")
+        active_windows = get_notepad_windows()
         if any(win.visible for win in active_windows):
             print("Notepad successfully launched and validated.")
             time.sleep(1) # Give window time to fully open
@@ -197,7 +293,7 @@ def process_single_post(post, templates_list):
 
     try:
         # Ensure Notepad window is active/focused
-        active_windows = gw.getWindowsWithTitle("Notepad")
+        active_windows = get_notepad_windows()
         if active_windows:
             window = active_windows[0]
             window.activate()
@@ -210,19 +306,26 @@ def process_single_post(post, templates_list):
             pyautogui.click(center_x, center_y)
             time.sleep(0.3)
         
-        # Clear any existing text in Notepad (safety measure)
+        # Create a new file/tab to ensure we're working with a fresh document
+        # This prevents writing to an existing tab
+        pyautogui.hotkey('ctrl', 'n')
+        time.sleep(0.5)  # Wait for new file/tab to be created
+        
+        # Clear any existing content (safety measure)
         pyautogui.hotkey('ctrl', 'a')
-        time.sleep(0.3)
+        time.sleep(0.2)
         pyautogui.press('delete')
-        time.sleep(0.3)
+        time.sleep(0.2)
         
         # Prepare content with proper formatting
         content = f"Title: {post['title']}\n\n{post['body']}"
         
-        # Write content with a reasonable interval to ensure Notepad can process it
-        # Using a slightly slower interval to prevent text truncation
-        pyautogui.write(content, interval=0.01)
-        time.sleep(0.5)  # Wait for text to be fully written
+        # Use clipboard to paste content instead of typing character by character
+        # This prevents character loss that occurs when typing too fast
+        pyperclip.copy(content)
+        time.sleep(0.1)  # Brief pause to ensure clipboard is ready
+        pyautogui.hotkey('ctrl', 'v')
+        time.sleep(0.3)  # Wait for paste to complete
         
         pyautogui.hotkey('ctrl', 's')
         time.sleep(1)
@@ -240,14 +343,10 @@ def process_single_post(post, templates_list):
             pyautogui.press('y')
             time.sleep(0.5)
 
-        print("Closing Notepad.")
-        active_windows = gw.getWindowsWithTitle("Notepad")
-        if active_windows:
-            active_windows[0].close()
-        else:
-            pyautogui.hotkey('alt', 'f4')
+        # Close Notepad fully and verify closure
+        if not close_notepad_fully():
+            print(f"Warning: Notepad may not have closed completely for post {post['id']}")
         
-        time.sleep(1)
         print(f"Successfully processed Post ID: {post['id']}")
         
     except Exception as e:
