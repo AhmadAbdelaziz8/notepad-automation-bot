@@ -16,8 +16,10 @@ RETRY_DELAY_S = 1
 MATCH_THRESHOLD = 0.8 # 80% confidence
 PROJECT_DIR_NAME = "tjm-project"
 PROJECT_PATH = Path.home() / "Desktop" / PROJECT_DIR_NAME
+# Scale factors to try for multi-scale template matching
+# Handles different window states (minimized, normal, maximized)
+SCALE_FACTORS = [0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5]
 
-# NEW: Point to our template directory
 TEMPLATE_DIR = Path("assets/templates")
 
 # --- 1. Load All Templates ---
@@ -38,7 +40,9 @@ def load_templates(directory):
 # --- 2. The "Smarter" Grounding Function ---
 def find_icon_with_multiple_templates(templates):
     """
-    Locates an icon by trying a list of templates.
+    Locates an icon by trying a list of templates at multiple scales.
+    Handles different window states (minimized, normal, maximized) by trying
+    each template at various scale factors.
     Returns: (x, y) center coordinates or None if not found.
     """
     with mss.mss() as sct:
@@ -57,32 +61,77 @@ def find_icon_with_multiple_templates(templates):
         for name, template in templates:
             
             # Handle alpha/transparency in the template
-            if template.shape[2] == 4:
-                mask = template[:, :, 3]
+            # Check if template has alpha channel (4 channels: BGR + Alpha)
+            if len(template.shape) == 3 and template.shape[2] == 4:
+                mask_original = template[:, :, 3]
                 template_bgr = template[:, :, :3]
+            elif len(template.shape) == 3 and template.shape[2] == 3:
+                # BGR image without alpha
+                mask_original = None
+                template_bgr = template
+            elif len(template.shape) == 2:
+                # Grayscale image
+                mask_original = None
+                template_bgr = cv2.cvtColor(template, cv2.COLOR_GRAY2BGR)
             else:
-                mask = None
+                print(f"Warning: Unexpected template format for {name}, shape: {template.shape}")
+                mask_original = None
                 template_bgr = template
             
-            template_gray = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2GRAY)
+            template_gray_original = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2GRAY)
+            original_h, original_w = template_gray_original.shape[:2]
             
-            # Skip if template is too big
-            if template_gray.shape[0] > screen_gray.shape[0] or template_gray.shape[1] > screen_gray.shape[1]:
-                print(f"Skipping template {name}, it's larger than the screen.")
-                continue
+            # Try multiple scales to handle different window states
+            # Try scale 1.0 first (original size) for speed, then others if needed
+            sorted_scales = sorted(SCALE_FACTORS, key=lambda x: abs(x - 1.0))
+            for scale in sorted_scales:
+                # Calculate new dimensions
+                new_w = int(original_w * scale)
+                new_h = int(original_h * scale)
+                
+                # Skip if scaled template is too small (less than 10 pixels)
+                if new_w < 10 or new_h < 10:
+                    continue
+                
+                # Skip if scaled template is larger than screen
+                if new_h > screen_gray.shape[0] or new_w > screen_gray.shape[1]:
+                    continue
+                
+                # Resize template and mask
+                template_gray = cv2.resize(template_gray_original, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                
+                # Resize mask if it exists (must be single channel uint8)
+                if mask_original is not None:
+                    mask = cv2.resize(mask_original, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                    # Ensure mask is single channel uint8
+                    if len(mask.shape) > 2:
+                        mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+                    mask = mask.astype(np.uint8)
+                else:
+                    mask = None
 
-            w, h = template_gray.shape[::-1]
+                w, h = template_gray.shape[::-1]
 
-            # Perform the match
-            res = cv2.matchTemplate(screen_gray, template_gray, cv2.TM_CCOEFF_NORMED, mask=mask)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-            
-            # Check if this match is the best one so far
-            if max_val > best_match_score:
-                best_match_score = max_val
-                best_match_loc = max_loc
-                best_match_dims = (w, h)
-                best_template_name = name
+                # Perform the match with error handling
+                try:
+                    if mask is not None:
+                        res = cv2.matchTemplate(screen_gray, template_gray, cv2.TM_CCOEFF_NORMED, mask=mask)
+                    else:
+                        res = cv2.matchTemplate(screen_gray, template_gray, cv2.TM_CCOEFF_NORMED)
+                    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+                    
+                    # Check if this match is the best one so far
+                    if max_val > best_match_score:
+                        best_match_score = max_val
+                        best_match_loc = max_loc
+                        best_match_dims = (w, h)
+                        best_template_name = f"{name} (scale: {scale:.2f})"
+                except cv2.error as e:
+                    # Skip this scale if matching fails (e.g., mask size mismatch)
+                    continue
+                except Exception as e:
+                    print(f"Warning: Error matching template {name} at scale {scale}: {e}")
+                    continue
 
         # AFTER checking all, see if our best match is good enough
         if best_match_score >= MATCH_THRESHOLD:
@@ -92,11 +141,14 @@ def find_icon_with_multiple_templates(templates):
             print(f"Icon found! Best match: '{best_template_name}' (Confidence: {best_match_score:.2f})")
             return (center_x, center_y)
         
+        # Debug: Print best score even if below threshold
+        if best_match_score > 0:
+            print(f"Debug: Best match score was {best_match_score:.2f} (threshold: {MATCH_THRESHOLD})")
+        
         return None # No match found
 
 # --- 3. API & Setup ---
 def fetch_posts():
-    """Fetches post data from JSONPlaceholder."""
     try:
         response = requests.get(API_URL)
         response.raise_for_status()
@@ -110,6 +162,7 @@ def setup_environment():
     print(f"Ensuring project directory exists: {PROJECT_PATH}")
     PROJECT_PATH.mkdir(parents=True, exist_ok=True)
 
+    
 # --- 4. Main Automation Workflow ---
 def get_notepad_windows():
     """Gets only actual Notepad windows, filtering out other applications."""
@@ -129,7 +182,6 @@ def get_notepad_windows():
     return notepad_windows
 
 def close_existing_notepad():
-    """Closes any existing Notepad windows without saving."""
     active_windows = get_notepad_windows()
     if not active_windows:
         return
@@ -355,7 +407,6 @@ def process_single_post(post, templates_list):
 # --- 5. Main Execution ---
 def main():
     setup_environment()
-    
     all_templates = load_templates(TEMPLATE_DIR)
     if not all_templates:
         print("Exiting, no templates found. Check the 'assets/templates' folder.")
