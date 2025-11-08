@@ -122,7 +122,7 @@ def launch_notepad(bot: DesktopBot, template_labels: list[str]) -> bool:
         found_label = find_icon(bot, template_labels)
         if found_label:
             break
-        time.sleep(0.5)
+        time.sleep(1)
         
     if not found_label:
         return False
