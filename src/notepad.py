@@ -7,7 +7,7 @@ import requests
 from pathlib import Path
 from botcity.core import DesktopBot
 
-from .icon_detector import icon_cache, find_icon, invalidate_cache
+from .icon_detector import find_icon, set_cache, invalidate_cache
 from .config import API_URL, SPACING
 
 
@@ -99,33 +99,33 @@ def close_notepad() -> bool:
 
 def launch_notepad(bot: DesktopBot, template_labels: list[str]) -> bool:
     """Launch Notepad by finding and clicking the icon."""
-    for attempt in range(3):
-        result = find_icon(bot, template_labels, use_cache=True, click=True)
-        if result:
-            found_label, coords = result
-            if _verify_notepad_launched(found_label, coords):
-                return True
-            # Cache may be stale, invalidate and retry
-            invalidate_cache(found_label)
-        _wait()
+    # Try once with cache 
+    coords = find_icon(bot, template_labels, use_cache=True, click=True)
+    if coords:
+        if _verify_notepad_launched(coords):
+            return True
+        # if not launched, invalidate the cache
+        invalidate_cache()
     
-    # Final attempt without cache
-    result = find_icon(bot, template_labels, use_cache=False, click=True)
-    if result:
-        found_label, coords = result
-        return _verify_notepad_launched(found_label, coords)
+    # Try 3 times without cache (fresh search)
+    for attempt in range(3):
+        coords = find_icon(bot, template_labels, use_cache=False, click=True)
+        if coords:
+            if _verify_notepad_launched(coords):
+                return True
+        _wait()
     
     return False
 
 
-def _verify_notepad_launched(label: str, coords: tuple[int, int] | None) -> bool:
+def _verify_notepad_launched(coords: tuple[int, int] | None) -> bool:
     """Verify that Notepad launched successfully."""
     timeout = time.time() + 5
     while time.time() < timeout:
         active_windows = get_notepad_windows()
         if any(win.visible for win in active_windows):
-            if coords and label:
-                icon_cache[label] = coords
+            if coords:
+                set_cache(coords)
             _wait()
             return True
         _wait()

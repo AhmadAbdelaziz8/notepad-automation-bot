@@ -10,13 +10,13 @@ from src.notepad import (
     launch_notepad,
     write_post_to_notepad,
 )
-from src.config import TEMPLATE_DIR, PROJECT_PATH, INITIAL_DELAY, STARTUP_DELAY
+from src.config import TEMPLATE_DIR, PROJECT_PATH, SPACING
 
 
 def process_post(post: dict, bot: DesktopBot, template_labels: list[str]):
     """Process a single post: launch Notepad, write content, and close."""
     print(f"Processing Post ID: {post['id']}")
-    
+
     close_notepad()
     
     if not launch_notepad(bot, template_labels):
@@ -35,8 +35,8 @@ def main():
 
     # Minimize all windows
     pyautogui.hotkey('win', 'd')
-    time.sleep(INITIAL_DELAY)
-    
+    time.sleep(SPACING)
+
     # Ensure project directory exists
     PROJECT_PATH.mkdir(parents=True, exist_ok=True)
 
@@ -54,7 +54,6 @@ def main():
         print("Error: API failure.")
         return
 
-    time.sleep(STARTUP_DELAY)
 
     for post in posts[:10]:
         process_post(post, bot, template_labels)

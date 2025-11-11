@@ -6,7 +6,7 @@ from botcity.core import DesktopBot
 from .config import MATCHING_THRESHOLD, FIND_WAIT_TIME
 
 # Icon cache for faster subsequent lookups / in case of the same coordinates
-icon_cache = {}
+icon_cache: tuple[int, int] | None = None
 
 
 def register_templates(bot: DesktopBot, directory: Path) -> bool:
@@ -21,15 +21,20 @@ def register_templates(bot: DesktopBot, directory: Path) -> bool:
     return True
 
 
-def invalidate_cache(label: str = None):
-    if label:
-        icon_cache.pop(label, None)
-    else:
-        icon_cache.clear()
+def set_cache(coords: tuple[int, int]):
+    """Set the cached icon coordinates."""
+    global icon_cache
+    icon_cache = coords
 
 
-def find_icon(bot: DesktopBot, template_labels: list[str], use_cache: bool = True, click: bool = False) -> tuple[str, tuple[int, int]] | None:
-    """Find an icon from the given template labels and return label with coordinates.
+def invalidate_cache():
+    """Clear the cached icon coordinates."""
+    global icon_cache
+    icon_cache = None
+
+
+def find_icon(bot: DesktopBot, template_labels: list[str], use_cache: bool = True, click: bool = False) -> tuple[int, int] | None:
+    """Find an icon from the given template labels and return coordinates.
     
     Args:
         bot: DesktopBot instance
@@ -38,17 +43,16 @@ def find_icon(bot: DesktopBot, template_labels: list[str], use_cache: bool = Tru
         click: Whether to double-click the icon after finding it
     
     Returns:
-        Tuple of (label, (x, y)) or None if not found
+        Tuple of (x, y) coordinates or None if not found
     """
+    global icon_cache
+    # Try to find the icon using the cache
     if use_cache and icon_cache:
-        for label in template_labels:
-            if label in icon_cache:
-                coords = icon_cache[label]
-                if click:
-                    # Use cached coordinates directly for clicking
-                    x, y = coords
-                    pyautogui.doubleClick(x, y)
-                return (label, coords)
+        coords = icon_cache
+        if click:
+            x, y = coords
+            pyautogui.doubleClick(x, y)
+        return coords
     
     thresholds = [MATCHING_THRESHOLD, MATCHING_THRESHOLD - 0.1]
     for threshold in thresholds:
@@ -59,10 +63,10 @@ def find_icon(bot: DesktopBot, template_labels: list[str], use_cache: bool = Tru
                 
                 if coords:
                     x, y = int(coords[0]), int(coords[1])
-                    icon_cache[label] = (x, y)
+                    set_cache((x, y))
                     if click:
                         pyautogui.doubleClick(x, y)
-                    return (label, (x, y))
+                    return (x, y)
     
     return None
 

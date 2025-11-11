@@ -9,10 +9,8 @@ PROJECT_PATH = Path.home() / "Desktop" / "tjm-project"
 API_URL = "https://jsonplaceholder.typicode.com/posts"
 
 # Template matching
-MATCHING_THRESHOLD = 0.85
+MATCHING_THRESHOLD = 0.9
 FIND_WAIT_TIME = 150 # milliseconds
 
 # Spacing (time delays in seconds)
-SPACING = 0.2
-INITIAL_DELAY = 0.5  # Delay after minimizing windows
-STARTUP_DELAY = 3.0  # Delay before starting to process posts
+SPACING = 0.25
