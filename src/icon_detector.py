@@ -33,14 +33,13 @@ def invalidate_cache():
     icon_cache = None
 
 
-def find_icon(bot: DesktopBot, template_labels: list[str], use_cache: bool = True, click: bool = False) -> tuple[int, int] | None:
-    """Find an icon from the given template labels and return coordinates.
+def find_icon(bot: DesktopBot, template_labels: list[str], use_cache: bool = True) -> tuple[int, int] | None:
+    """Find an icon from the given template labels, double-click it, and return coordinates.
     
     Args:
         bot: DesktopBot instance
         template_labels: List of template labels to search
         use_cache: Whether to use cached coordinates
-        click: Whether to double-click the icon after finding it
     
     Returns:
         Tuple of (x, y) coordinates or None if not found
@@ -49,9 +48,8 @@ def find_icon(bot: DesktopBot, template_labels: list[str], use_cache: bool = Tru
     # Try to find the icon using the cache
     if use_cache and icon_cache:
         coords = icon_cache
-        if click:
-            x, y = coords
-            pyautogui.doubleClick(x, y)
+        x, y = coords
+        pyautogui.doubleClick(x, y)
         return coords
     
     thresholds = [MATCHING_THRESHOLD, MATCHING_THRESHOLD - 0.1]
@@ -64,8 +62,7 @@ def find_icon(bot: DesktopBot, template_labels: list[str], use_cache: bool = Tru
                 if coords:
                     x, y = int(coords[0]), int(coords[1])
                     set_cache((x, y))
-                    if click:
-                        pyautogui.doubleClick(x, y)
+                    pyautogui.doubleClick(x, y)
                     return (x, y)
     
     return None

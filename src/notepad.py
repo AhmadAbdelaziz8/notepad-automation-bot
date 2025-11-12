@@ -100,7 +100,7 @@ def close_notepad() -> bool:
 def launch_notepad(bot: DesktopBot, template_labels: list[str]) -> bool:
     """Launch Notepad by finding and clicking the icon."""
     # Try once with cache 
-    coords = find_icon(bot, template_labels, use_cache=True, click=True)
+    coords = find_icon(bot, template_labels, use_cache=True)
     if coords:
         if _verify_notepad_launched(coords):
             return True
@@ -109,7 +109,7 @@ def launch_notepad(bot: DesktopBot, template_labels: list[str]) -> bool:
     
     # Try 3 times without cache (fresh search)
     for attempt in range(3):
-        coords = find_icon(bot, template_labels, use_cache=False, click=True)
+        coords = find_icon(bot, template_labels, use_cache=False)
         if coords:
             if _verify_notepad_launched(coords):
                 return True
