@@ -206,6 +206,9 @@ def write_post_to_notepad(post: dict, project_path: Path):
         print(f"Warning: Save As dialog not found for post {post['id']}")
         return
     
+
+    _prepare_notepad_window()
+    
     # Close the tab/document
     pyautogui.hotkey('ctrl', 'w')
     _wait()
