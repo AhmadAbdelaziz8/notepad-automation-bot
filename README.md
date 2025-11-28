@@ -1,4 +1,4 @@
-# Notepar automation Bot
+# Notepad automation Bot
 
 Desktop automation bot that fetches posts from an API and writes them to Notepad files using computer vision for icon detection.
 
